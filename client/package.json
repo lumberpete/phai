@@ -1,6 +1,6 @@
 {
-  "name": "gpai",
-  "productName": "gpai",
+  "name": "phai-client",
+  "productName": "phai-client",
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": "src/index.js",
