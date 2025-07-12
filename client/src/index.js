@@ -32,7 +32,7 @@ const createWindow = () => {
 	});
 };
 
-const imagesDir = path.resolve(__dirname, '../../images');
+const imagesDir = path.resolve(__dirname, '../../../images');
 if (!fs.existsSync(imagesDir)) {
 	fs.mkdirSync(imagesDir, { recursive: true });
 }
