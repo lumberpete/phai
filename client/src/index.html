@@ -9,7 +9,11 @@
 
 <body>
 	<div class="header-bar">
-		<button data-role="trigger">go</button>
+		<div class="controls">
+			<label for="max-photos">Max photos:</label>
+			<input type="number" id="max-photos" value="10" min="1" max="1000">
+			<button data-role="trigger">Scan photos</button>
+		</div>
 	</div>
 	<div class="webview-container">
 		<webview data-role="webview" src="https://photos.google.com/login" allowfullscreen></webview>

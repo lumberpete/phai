@@ -9,9 +9,10 @@ const createWindow = () => {
 			preload: path.join(__dirname, 'preload.js'),
 			webviewTag: true,
 		},
-		show: false
+		show: false,
+		autoHideMenuBar: true
 	});
-	// mainWindow.maximize();
+	mainWindow.maximize();
 	mainWindow.show();
 
 	// and load the index.html of the app.
@@ -21,15 +22,15 @@ const createWindow = () => {
 	mainWindow.webContents.openDevTools();
 
 	// Auto-open webview devtools on webview reload, closing any existing webview devtools windows first
-	mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
-		webContents.on('did-finish-load', async () => {
-			// Close any existing devtools for this webview
-			if (webContents.isDevToolsOpened()) {
-				webContents.closeDevTools();
-			}
-			webContents.openDevTools();
-		});
-	});
+	// mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
+	// 	webContents.on('did-finish-load', async () => {
+	// 		// Close any existing devtools for this webview
+	// 		if (webContents.isDevToolsOpened()) {
+	// 			webContents.closeDevTools();
+	// 		}
+	// 		webContents.openDevTools();
+	// 	});
+	// });
 };
 
 const imagesDir = path.resolve(__dirname, '../../../images');
