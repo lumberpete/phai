@@ -1,26 +1,42 @@
 <!DOCTYPE html>
+<!-- 
+	phAI - AI-powered Google Photos automation tool
+	Main UI interface for configuring and running photo processing
+-->
 <html>
 
 <head>
 	<meta charset="UTF-8" />
-	<title>Hello World</title>
+	<title>phAI</title>
 	<link rel="stylesheet" href="index.css" />
 </head>
 
 <body>
 	<div class="header-bar">
+		<div class="prompt-section">
+			<label for="ai-prompt">AI image processing prompt:</label>
+			<textarea id="ai-prompt" rows="2" placeholder="Enter your prompt...">Describe this image in detail, including: the main subject(s), setting/location, colors, mood, and any visible text or writing (spell out exactly what it says). Note any interesting or unique elements.</textarea>
+		</div>
 		<div class="controls">
-			<label for="max-photos">Max photos:</label>
+			<label for="ollama-endpoint">Ollama endpoint:</label>
+			<input type="text" id="ollama-endpoint" value="localhost:11434" placeholder="localhost:11434">
+			<label for="ollama-model">Model:</label>
+			<select id="ollama-model">
+				<option value="llava:7b" selected>llava:7b</option>
+				<option value="llava:13b">llava:13b</option>
+			</select>
+			<label for="max-photos">Max photos in one loop:</label>
 			<input type="number" id="max-photos" value="10" min="1" max="1000">
-			<button data-role="trigger">Scan photos</button>
+			<button data-role="trigger" id="scan-button">Scan photos</button>
+			<button id="stop-button" style="display: none;">Stop</button>
 		</div>
 	</div>
 	<div class="webview-container">
 		<webview data-role="webview" src="https://photos.google.com/login" allowfullscreen></webview>
 		<div class="info-panel" id="info-panel">
 			<div class="info-panel-header">
-				<h3>Photo Information</h3>
-				<button class="toggle-btn" id="toggle-panel">◀</button>
+				<h3>Extracted photo information with AI&nbsp;interpretation</h3>
+				<button class="toggle-btn" id="toggle-panel">‹</button>
 			</div>
 			<div class="info-panel-content">
 				<div class="no-data">No photo data collected yet</div>

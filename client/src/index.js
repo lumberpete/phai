@@ -1,5 +1,9 @@
+/**
+ * phAI - AI-powered Google Photos automation tool
+ * Main process for the Electron application
+ */
+
 const { app, BrowserWindow, ipcMain } = require('electron');
-const fs = require('node:fs');
 const path = require('node:path');
 
 const createWindow = () => {
@@ -17,66 +21,9 @@ const createWindow = () => {
 
 	// and load the index.html of the app.
 	mainWindow.loadFile(path.join(__dirname, 'index.html'));
-
-	const dev = false;
-
-	if (dev) {
-		// Open the DevTools.
-		mainWindow.webContents.openDevTools();
-
-		// Auto-open webview devtools on webview reload, closing any existing webview devtools windows first
-		mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
-			webContents.on('did-finish-load', async () => {
-				// Close any existing devtools for this webview
-				if (webContents.isDevToolsOpened()) {
-					webContents.closeDevTools();
-				}
-				webContents.openDevTools();
-			});
-		});
-	}
 };
 
-const imagesDir = path.resolve(__dirname, '../../../images');
-if (!fs.existsSync(imagesDir)) {
-	fs.mkdirSync(imagesDir, { recursive: true });
-}
-
-let fileTypePromise; // cache for file-type import
-
-async function saveImageFile(filePath, buffer) {
-	try {
-		fs.writeFileSync(filePath, buffer);
-
-		// Check file type after saving
-		if (!fileTypePromise) {
-			fileTypePromise = import('file-type');
-		}
-		const { fileTypeFromBuffer } = await fileTypePromise;
-		const type = await fileTypeFromBuffer(buffer);
-
-		if (type && type.ext) {
-			const filePathWithExt = filePath + '.' + type.ext;
-			fs.renameSync(filePath, filePathWithExt);
-			return filePathWithExt;
-		} else {
-			return filePath;
-		}
-	} catch (err) {
-		console.error('File save error:', err);
-		throw err;
-	}
-}
-
 // Register IPC handlers before app.whenReady()
-ipcMain.handle('save-image-file', async (event, filePath, buffer) => {
-	return saveImageFile(filePath, Buffer.from(buffer));
-});
-
-ipcMain.handle('get-images-dir', () => {
-	return imagesDir;
-});
-
 ipcMain.handle('download-image-with-session', async (event, url) => {
 	return new Promise((resolve, reject) => {
 		// Get the webview's session from the sender
