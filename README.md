@@ -2,16 +2,34 @@
 
 phAI is an Electron-based desktop application that automates the process of scanning Google Photos and generating AI-powered descriptions for your images using Ollama's local AI models.
 
+## Screenshots
+
+### Initial Application State
+![Initial Interface](screenshots/Screenshot%202025-07-13%20131438.png)
+*Clean, ready-to-use interface with configurable AI prompts and Ollama settings*
+
+### First Photo Processed
+![First Photo Processing](screenshots/Screenshot%202025-07-13%20131551.png)
+*Application in action - first photo successfully processed with AI-generated description*
+
+### Expanded Photo Details
+![Detailed View](screenshots/Screenshot%202025-07-13%20131835.png)
+*Comprehensive metadata display with expanded details panel showing photo information, location data, and technical specifications*
+
+### Processing Various Content Types
+![AI Development Joke](screenshots/Screenshot%202025-07-13%20132325.png)
+*phAI analyzing content about AI development workflows*
+
 ## Features
 
 - **Automated Google Photos scanning**: Navigate through your photo library automatically
-- **AI image description**: Generate detailed descriptions using configurable Ollama models
+- **AI image description**: Generate detailed descriptions using configurable Ollama models (see processing screenshots)
 - **Customizable prompts**: Define your own AI prompts for specific description needs
 - **Multiple model support**: Choose between llava:7b and llava:13b models
 - **Configurable endpoint**: Connect to local or remote Ollama instances
 - **Export functionality**: Export results to CSV for further analysis
 - **Real-time progress**: Monitor scanning progress with stop/start controls
-- **Detailed metadata**: View photo details, location data, and technical information
+- **Detailed metadata**: View photo details, location data, and technical information (see expanded details screenshot)
 
 ## Prerequisites
 
