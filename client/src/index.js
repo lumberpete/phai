@@ -18,19 +18,23 @@ const createWindow = () => {
 	// and load the index.html of the app.
 	mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
-	// Open the DevTools.
-	mainWindow.webContents.openDevTools();
+	const dev = false;
 
-	// Auto-open webview devtools on webview reload, closing any existing webview devtools windows first
-	// mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
-	// 	webContents.on('did-finish-load', async () => {
-	// 		// Close any existing devtools for this webview
-	// 		if (webContents.isDevToolsOpened()) {
-	// 			webContents.closeDevTools();
-	// 		}
-	// 		webContents.openDevTools();
-	// 	});
-	// });
+	if (dev) {
+		// Open the DevTools.
+		mainWindow.webContents.openDevTools();
+
+		// Auto-open webview devtools on webview reload, closing any existing webview devtools windows first
+		mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
+			webContents.on('did-finish-load', async () => {
+				// Close any existing devtools for this webview
+				if (webContents.isDevToolsOpened()) {
+					webContents.closeDevTools();
+				}
+				webContents.openDevTools();
+			});
+		});
+	}
 };
 
 const imagesDir = path.resolve(__dirname, '../../../images');
@@ -43,7 +47,6 @@ let fileTypePromise; // cache for file-type import
 async function saveImageFile(filePath, buffer) {
 	try {
 		fs.writeFileSync(filePath, buffer);
-		console.log(`Saved: ${filePath}`);
 
 		// Check file type after saving
 		if (!fileTypePromise) {
@@ -51,15 +54,12 @@ async function saveImageFile(filePath, buffer) {
 		}
 		const { fileTypeFromBuffer } = await fileTypePromise;
 		const type = await fileTypeFromBuffer(buffer);
-		console.log(type);
 
 		if (type && type.ext) {
 			const filePathWithExt = filePath + '.' + type.ext;
 			fs.renameSync(filePath, filePathWithExt);
-			console.log(`Updated: ${filePathWithExt}`);
 			return filePathWithExt;
 		} else {
-			console.log(`Updated (unknown type): ${filePath}`);
 			return filePath;
 		}
 	} catch (err) {
@@ -81,7 +81,6 @@ ipcMain.handle('download-image-with-session', async (event, url) => {
 	return new Promise((resolve, reject) => {
 		// Get the webview's session from the sender
 		const session = event.sender.session;
-
 		const { net } = require('electron');
 
 		const request = net.request({
