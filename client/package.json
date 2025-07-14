@@ -5,7 +5,7 @@
   "description": "AI-powered Google Photos automation tool",
   "main": "src/index.js",
   "scripts": {
-    "start": "NODE_OPTIONS=\"--no-deprecation\" electron-forge start",
+    "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",

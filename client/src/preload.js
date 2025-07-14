@@ -3,12 +3,11 @@
  * Preload script for secure IPC communication between main and renderer processes
  */
 
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Expose APIs for image processing operations
 contextBridge.exposeInMainWorld('electronAPI', {
-	downloadImageWithSession: (url) => ipcRenderer.invoke('download-image-with-session', url)
+	downloadImageWithSession: (url) => ipcRenderer.invoke('download-image-with-session', url),
+	selectReferenceImage: () => ipcRenderer.invoke('select-reference-image'),
+	readPromptFile: () => ipcRenderer.invoke('read-prompt-file'),
+	readReferencePhotoFile: () => ipcRenderer.invoke('read-reference-photo-file')
 });

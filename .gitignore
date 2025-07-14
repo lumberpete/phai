@@ -19,9 +19,6 @@ build/
 *.exe
 *.msi
 
-# Images directory (local downloads)
-images/
-
 # IDE and editor files
 .vscode/
 .idea/
@@ -61,3 +58,7 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Ignore user prompt and reference photo in client src
+client/src/reference_photo.jpg
+client/src/prompt.txt

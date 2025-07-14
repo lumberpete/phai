@@ -3,11 +3,11 @@
  * Main process for the Electron application
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 
 const createWindow = () => {
-	// Create the browser window.
 	const mainWindow = new BrowserWindow({
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
@@ -18,15 +18,12 @@ const createWindow = () => {
 	});
 	mainWindow.maximize();
 	mainWindow.show();
-
-	// and load the index.html of the app.
 	mainWindow.loadFile(path.join(__dirname, 'index.html'));
 };
 
-// Register IPC handlers before app.whenReady()
+// IPC Handlers
 ipcMain.handle('download-image-with-session', async (event, url) => {
 	return new Promise((resolve, reject) => {
-		// Get the webview's session from the sender
 		const session = event.sender.session;
 		const { net } = require('electron');
 
@@ -53,14 +50,85 @@ ipcMain.handle('download-image-with-session', async (event, url) => {
 	});
 });
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+ipcMain.handle('select-reference-image', async () => {
+	const result = await dialog.showOpenDialog({
+		title: 'Select Reference Image',
+		filters: [
+			{ name: 'JPEG Images', extensions: ['jpg', 'jpeg'] }
+		],
+		properties: ['openFile']
+	});
+
+	if (result.canceled || result.filePaths.length === 0) {
+		return null;
+	}
+
+	const filePath = result.filePaths[0];
+
+	try {
+		const fileBuffer = fs.readFileSync(filePath);
+		const base64Data = fileBuffer.toString('base64');
+
+		return {
+			path: filePath,
+			filename: path.basename(filePath),
+			base64: base64Data
+		};
+	} catch (error) {
+		console.error('Error reading file:', error);
+		throw error;
+	}
+});
+
+// Default Input Files Handlers
+const defaultInputFiles = [
+	{
+		key: 'prompt',
+		filename: 'prompt.txt',
+		handler: () => {
+			const promptPath = path.join(__dirname, 'prompt.txt');
+			try {
+				if (fs.existsSync(promptPath)) {
+					return fs.readFileSync(promptPath, 'utf8').trim();
+				}
+				return null;
+			} catch (err) {
+				console.error('Error reading prompt.txt:', err);
+				return null;
+			}
+		}
+	},
+	{
+		key: 'reference-photo',
+		filename: 'reference_photo.jpg',
+		handler: () => {
+			const photoPath = path.join(__dirname, 'reference_photo.jpg');
+			try {
+				if (fs.existsSync(photoPath)) {
+					const base64 = fs.readFileSync(photoPath).toString('base64');
+					return {
+						path: photoPath,
+						filename: path.basename(photoPath),
+						base64
+					};
+				}
+				return null;
+			} catch (err) {
+				console.error('Error reading reference_photo.jpg:', err);
+				return null;
+			}
+		}
+	}
+];
+
+defaultInputFiles.forEach(file => {
+	ipcMain.handle(`read-${file.key}-file`, async () => file.handler());
+});
+
+// App Lifecycle
 app.whenReady().then(() => {
 	createWindow();
 
-	// On OS X it's common to re-create a window in the app when the
-	// dock icon is clicked and there are no other windows open.
 	app.on('activate', () => {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			createWindow();
@@ -68,14 +136,8 @@ app.whenReady().then(() => {
 	});
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
 	if (process.platform !== 'darwin') {
 		app.quit();
 	}
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.

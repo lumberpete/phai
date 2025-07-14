@@ -3,82 +3,155 @@
  * Main renderer process for the Electron application
  */
 
-// DOM element selectors
-const button = document.querySelector('[data-role="trigger"]');
-const webview = document.querySelector('[data-role="webview"]');
+// DOM Elements
+const scanButton = document.querySelector('#scan-button');
+const webview = document.querySelector('webview');
 const maxPhotosInput = document.querySelector('#max-photos');
 const ollamaEndpointInput = document.querySelector('#ollama-endpoint');
 const ollamaModelSelect = document.querySelector('#ollama-model');
 const aiPromptInput = document.querySelector('#ai-prompt');
 const infoPanel = document.querySelector('#info-panel');
 const toggleBtn = document.querySelector('#toggle-panel');
-const infoPanelContent = document.querySelector('.info-panel-content');
-const scanButton = document.querySelector('#scan-button');
 const stopButton = document.querySelector('#stop-button');
+const referenceImageBtn = document.querySelector('#reference-image-btn');
+const clearListBtn = document.querySelector('#clear-list-btn');
+const photoList = document.querySelector('#photo-details-list');
 
-// Utilities
+// State Variables
 const phaiObjectName = 'phai_' + Math.random().toString(36).substring(2, 11);
-
-// Application state
 let collectedPhotos = [];
 let isProcessing = false;
 let shouldStop = false;
+let referenceImageData = null;
 
-// Toggle panel functionality
+// Event Listeners
+clearListBtn.addEventListener('click', () => {
+	collectedPhotos = [];
+	photoList.innerHTML = '';
+	updateClearButtonVisibility();
+});
+
 toggleBtn.addEventListener('click', () => {
 	infoPanel.classList.toggle('collapsed');
 });
 
-// Stop button functionality
 stopButton.addEventListener('click', () => {
 	shouldStop = true;
+	isProcessing = false;
 	updateButtonStates(false);
 });
 
-/**
- * Update button states during processing
- * @param {boolean} processing - Whether processing is active
- */
-function updateButtonStates(processing) {
-	isProcessing = processing;
-	if (processing) {
-		scanButton.style.display = 'none';
-		stopButton.style.display = 'inline-block';
-		shouldStop = false;
+referenceImageBtn.addEventListener('click', async () => {
+	if (referenceImageData) {
+		clearReferenceImage();
 	} else {
-		scanButton.style.display = 'inline-block';
-		stopButton.style.display = 'none';
+		try {
+			const imageData = await window.electronAPI.selectReferenceImage();
+			if (imageData) {
+				setReferenceImage(imageData);
+			}
+		} catch (error) {
+			console.error('Error selecting reference image:', error);
+			alert('Failed to select image. Please try again.');
+		}
+	}
+});
+
+// Initialization
+async function loadDefaultInputs() {
+	const inputFiles = [
+		{
+			key: 'prompt',
+			api: 'readPromptFile',
+			apply: (data) => {
+				if (data) {
+					console.log('Loaded prompt from prompt.txt file');
+					aiPromptInput.value = data;
+				}
+			}
+		},
+		{
+			key: 'referencePhoto',
+			api: 'readReferencePhotoFile',
+			apply: (data) => {
+				if (data) {
+					console.log('Loaded reference photo from reference_photo.jpg file');
+					setReferenceImage(data);
+				}
+			}
+		}
+	];
+
+	for (const file of inputFiles) {
+		try {
+			const result = await window.electronAPI[file.api]();
+			file.apply(result);
+		} catch (error) {
+			console.error(`Error loading ${file.key} from default file:`, error);
+		}
+	}
+}
+loadDefaultInputs();
+
+// Initialize UI state
+updateClearButtonVisibility();
+
+// Reference Image Functions
+function setReferenceImage(imageData) {
+	referenceImageData = imageData;
+	referenceImageBtn.textContent = 'Clear image';
+	referenceImageBtn.classList.add('selected');
+}
+
+function clearReferenceImage() {
+	referenceImageData = null;
+	referenceImageBtn.textContent = 'Select image';
+	referenceImageBtn.classList.remove('selected');
+}
+
+// UI State Functions
+function updateClearButtonVisibility() {
+	if (collectedPhotos.length > 0) {
+		clearListBtn.classList.remove('hidden');
+	} else {
+		clearListBtn.classList.add('hidden');
 	}
 }
 
-/**
- * Get image description from Ollama llava model
- * @param {string} base64Image - Base64 encoded image data
- * @returns {Promise<string>} AI-generated image description
- */
+function updateButtonStates(processing) {
+	isProcessing = processing;
+	if (processing) {
+		scanButton.classList.add('hidden');
+		stopButton.classList.remove('hidden');
+		shouldStop = false;
+	} else {
+		scanButton.classList.remove('hidden');
+		stopButton.classList.add('hidden');
+	}
+}
+
+// AI Image Description
 async function getImageDescription(base64Image) {
 	try {
-		// Get the endpoint from the input field, with default fallback
 		const endpoint = ollamaEndpointInput.value.trim() || 'localhost:11434';
-		// Ensure endpoint has http:// prefix
 		const fullEndpoint = endpoint.startsWith('http') ? endpoint : `http://${endpoint}`;
 		const apiUrl = `${fullEndpoint}/api/generate`;
 
-		// Get the selected model
 		const selectedModel = ollamaModelSelect.value || 'llava:7b';
-
-		// Get the custom prompt from the input field, with default fallback
 		const customPrompt = aiPromptInput.value.trim() || 'Describe this image in detail, including: the main subject(s), setting/location, colors, mood, and any visible text or writing (spell out exactly what it says). Note any interesting or unique elements.';
+
+		const images = [base64Image];
+		if (referenceImageData && referenceImageData.base64) {
+			images.unshift(referenceImageData.base64);
+		}
 
 		const response = await fetch(apiUrl, {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-			},
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				model: selectedModel,
 				prompt: customPrompt,
-				images: [base64Image],
+				images: images,
 				stream: false
 			})
 		});
@@ -95,27 +168,33 @@ async function getImageDescription(base64Image) {
 	}
 }
 
-/**
- * Display photo information in the info panel
- * @param {Object} photoInfo - Photo metadata and image data
- * @param {number} photoNumber - Sequential photo number
- */
+// Display Photo Information
 function displayPhotoInfo(photoInfo, photoNumber) {
-	// Add to collected photos
+	let skipDisplay = false;
+	let jsonResult = null;
+
+	if (photoInfo.image && photoInfo.image.description) {
+		jsonResult = detectAndFormatJSON(photoInfo.image.description);
+		if (jsonResult && jsonResult.isJson) {
+			if (typeof jsonResult.json.include !== 'undefined' && jsonResult.json.include === false) {
+				skipDisplay = true;
+			}
+		}
+	}
+
+	if (skipDisplay) return;
+
 	collectedPhotos.push({ ...photoInfo, photoNumber });
 
-	// Create photo info element
 	const photoItem = document.createElement('div');
 	photoItem.className = 'photo-info-item';
 
 	let html = `<h4>Photo ${photoNumber}</h4>`;
-	
-	// Check what data is available
+
 	const hasDetails = photoInfo.details && photoInfo.details.length > 0;
 	const hasLocation = photoInfo.location && photoInfo.location.url;
 	const hasImageMetadata = photoInfo.image && (photoInfo.image.photoId || (photoInfo.image.width && photoInfo.image.height));
 
-	// Build collapsible details section if we have any metadata
 	if (hasDetails || hasLocation || hasImageMetadata) {
 		html += '<div class="photo-details">';
 		html += '<div class="details-header" onclick="toggleDetails(this)">';
@@ -125,7 +204,6 @@ function displayPhotoInfo(photoInfo, photoNumber) {
 		html += '<div class="details-content">';
 		html += '<table class="detail-table">';
 
-		// Add Google Photos metadata
 		if (hasDetails) {
 			photoInfo.details.forEach((detailGroup) => {
 				Object.entries(detailGroup).forEach(([key, value]) => {
@@ -135,7 +213,6 @@ function displayPhotoInfo(photoInfo, photoNumber) {
 			});
 		}
 
-		// Add image technical metadata
 		if (hasImageMetadata) {
 			if (photoInfo.image.photoId) {
 				html += `<tr><td>Photo ID:</td><td>${photoInfo.image.photoId}</td></tr>`;
@@ -145,21 +222,16 @@ function displayPhotoInfo(photoInfo, photoNumber) {
 			}
 		}
 
-		// Add location information
 		if (hasLocation) {
 			html += `<tr><td>Location:</td><td><a href="${photoInfo.location.url}" target="_blank">View on Map</a></td></tr>`;
 		}
 
-		html += '</table>';
-		html += '</div>';
-		html += '</div>';
+		html += '</table></div></div>';
 	}
 
-	// Display image info
 	if (photoInfo.image) {
 		html += '<div class="photo-image-info">';
 
-		// Display the image if base64 data is available (make it clickable to view full image)
 		if (photoInfo.image.data64) {
 			html += '<div class="photo-preview">';
 			if (photoInfo.image.url) {
@@ -172,11 +244,17 @@ function displayPhotoInfo(photoInfo, photoNumber) {
 			html += '</div>';
 		}
 
-		// Display AI description if available
 		if (photoInfo.image.description) {
-			html += '<div class="ai-description">';
-			html += `<strong>AI Description:</strong> ${photoInfo.image.description}`;
-			html += '</div>';
+			if (jsonResult && jsonResult.isJson) {
+				html += '<div class="json-response">';
+				html += '<strong>JSON Response:</strong>';
+				html += '<pre class="json-content">' + JSON.stringify(jsonResult.json, null, 2) + '</pre>';
+				html += '</div>';
+			} else {
+				html += '<div class="ai-description">';
+				html += `<strong>AI Description:</strong> ${photoInfo.image.description}`;
+				html += '</div>';
+			}
 		}
 
 		html += '</div>';
@@ -184,28 +262,38 @@ function displayPhotoInfo(photoInfo, photoNumber) {
 
 	photoItem.innerHTML = html;
 
-	// Remove "no data" message if it exists
-	const noDataMsg = infoPanelContent.querySelector('.no-data');
-	if (noDataMsg) {
-		noDataMsg.remove();
-	}
-
-	// Add to panel (newest at top)
-	infoPanelContent.insertBefore(photoItem, infoPanelContent.firstChild);
-
-	// Scroll to top to show newest item
-	infoPanelContent.scrollTop = 0;
+	photoList.insertBefore(photoItem, photoList.firstChild);
+	photoList.scrollTop = 0;
+	updateClearButtonVisibility();
 }
 
-button.addEventListener('click', async (e) => {
+// Main Photo Processing
+scanButton.addEventListener('click', async () => {
 	if (!webview || isProcessing) return;
 
-	// Update UI to show processing state
+	isProcessing = true;
 	updateButtonStates(true);
 
 	try {
+		await initializePhaiObject();
+		await navigateToFirstPhoto();
 
-	// Initialize global phai object in the webview window scope
+		const infoPanel = await focusInfoPanel({ type: 'char', keyCode: 'i' }, true, 3, 750);
+		if (!infoPanel) {
+			console.error('Info panel not found - stopping execution');
+			return;
+		}
+
+		await processPhotos();
+	} catch (error) {
+		console.error('Error during photo processing:', error);
+	} finally {
+		isProcessing = false;
+		updateButtonStates(false);
+	}
+});
+
+async function initializePhaiObject() {
 	await webview.executeJavaScript(`
 		(()=>{
 			if (!window.${phaiObjectName}) {
@@ -217,133 +305,56 @@ button.addEventListener('click', async (e) => {
 			}
 		})();
 	`);
+}
 
-	// Check if the current webview location is a Google Photos photo URL
+async function navigateToFirstPhoto() {
 	const currentUrl = await webview.executeJavaScript(`window.location.href`);
-	if (!currentUrl.includes('photos.google.com/photo/')) {
+	if (currentUrl.includes('photos.google.com/photo/')) return;
 
-		// Navigate to first photo
-		let firstPhoto = false;
-		while (!firstPhoto) {
-			firstPhoto = await webview.executeJavaScript(`
-				(()=>{
-					const focusedElement = document.activeElement;
-					if (
-						focusedElement &&
-						focusedElement.tagName === 'A' &&
-						focusedElement.href &&
-						focusedElement.href.includes('/photo/')
-					) {
-						return focusedElement.outerHTML;
-					}
-					return false;
-				})();
-			`);
-
-			if (!firstPhoto) {
-				webview.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
-				webview.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
-				await new Promise(res => setTimeout(res, 200));
-			}
-		}
-
-		// Open photo
-		webview.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
-		webview.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
-		await new Promise(res => setTimeout(res, 500));
-
-	}
-
-	// Focus info panel initially
-	let infoPanel = await focusInfoPanel({ type: 'char', keyCode: 'i' }, true, 3, 750);
-
-	if (infoPanel === false) {
-		console.error('Info panel not found - stopping execution');
-		return;
-	}
-
-	// Process photos in sequence
-	const maxIterations = parseInt(maxPhotosInput.value) || 10;
-	const maxLocationAttempts = 50;
-	let keepGoing = true;
-	let iterationCount = 0;
-
-	// Get initial window location to track changes
-	let currentLocation = await webview.executeJavaScript(`window.location.href`);
-
-	while (keepGoing && !shouldStop) {
-		iterationCount++;
-
-		// Extract photo metadata
-		const photoInfo = await webview.executeJavaScript(`
+	let firstPhoto = false;
+	while (!firstPhoto) {
+		firstPhoto = await webview.executeJavaScript(`
 			(()=>{
-				let photoInfo = {
-					details: [],
-					location: null,
-					image: null
-				};
-
-				const panel = document.activeElement.closest(':has(dl)');
-				if (panel) {
-					const photoId = (window.location.pathname.match(/\\/photo\\/([^\\/]+)/) || [false]).pop();
-					if (photoId) {
-						const dataNode = document.querySelector('[data-p*="' + photoId + '"][data-width][data-height][data-url]');
-						if (dataNode) {
-							photoInfo.image = {
-								url: dataNode.getAttribute('data-url'),
-								width: parseInt(dataNode.getAttribute('data-width')),
-								height: parseInt(dataNode.getAttribute('data-height')),
-								photoId: photoId
-							};
-						}
-						const img = new Image();
-						img.src = dataNode.getAttribute('data-url');
-					}
-
-					panel.querySelectorAll('dl dd').forEach((detailNode) => {
-						let details = {};
-						Array.from(detailNode.children).forEach((child, childIndex) => {
-							if (child.children.length > 0) {
-								Array.from(child.children).forEach((grandchild, grandchildIndex) => {
-									let label = grandchild.getAttribute('aria-label');
-									if (label) {
-										label = label.split(':')[0].trim();
-									} else {
-										label = 'detail-' + childIndex + '-' + grandchildIndex;
-									}
-									details[label] = grandchild.innerText.trim();
-								});
-							} else {
-								let label = child.getAttribute('aria-label');
-								if (label) {
-									label = label.split(':')[0].trim();
-								} else {
-									label = 'detail-' + childIndex;
-								}
-								details[label] = child.innerText.trim();
-							}
-						});
-						photoInfo.details.push(details);
-					});
-
-					const locationNode = panel.querySelector('[data-mapurl]');
-					if (locationNode) {
-						photoInfo.location = {
-							url: locationNode.getAttribute('data-mapurl'),
-						};
-					}
+				const focusedElement = document.activeElement;
+				if (
+					focusedElement &&
+					focusedElement.tagName === 'A' &&
+					focusedElement.href &&
+					focusedElement.href.includes('/photo/')
+				) {
+					return focusedElement.outerHTML;
 				}
-				return photoInfo;
+				return false;
 			})();
 		`);
 
-		// Add base64 image data if image URL exists
+		if (!firstPhoto) {
+			webview.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+			webview.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+			await new Promise(res => setTimeout(res, 200));
+		}
+	}
+
+	webview.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
+	webview.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+	await new Promise(res => setTimeout(res, 500));
+}
+
+async function processPhotos() {
+	const maxIterations = parseInt(maxPhotosInput.value) || 10;
+	const maxLocationAttempts = 50;
+	let iterationCount = 0;
+	let currentLocation = await webview.executeJavaScript(`window.location.href`);
+
+	while (iterationCount < maxIterations && !shouldStop) {
+		iterationCount++;
+
+		const photoInfo = await extractPhotoMetadata();
+
 		if (photoInfo.image && photoInfo.image.url) {
 			try {
 				const imageBuffer = await loadImageInWebview(photoInfo.image.url);
 				photoInfo.image.data64 = btoa(String.fromCharCode.apply(null, imageBuffer));
-
-				// Get AI description using Ollama
 				photoInfo.image.description = await getImageDescription(photoInfo.image.data64);
 			} catch (error) {
 				console.error('Failed to fetch image for base64 conversion:', error);
@@ -352,13 +363,10 @@ button.addEventListener('click', async (e) => {
 			}
 		}
 
-		// Display photo info in the panel
 		displayPhotoInfo(photoInfo, iterationCount);
 
-		// Navigate to next photo
 		webview.sendInputEvent({ type: 'char', keyCode: 'j' });
 
-		// Wait for location to change
 		let locationAttempts = 0;
 		let newLocation = await webview.executeJavaScript(`window.location.href`);
 
@@ -372,48 +380,88 @@ button.addEventListener('click', async (e) => {
 			currentLocation = newLocation;
 		} else {
 			console.warn('Location did not change after navigation attempt');
-			keepGoing = false;
 			break;
 		}
 
-		// Refocus info panel for next photo
-		infoPanel = await focusInfoPanel([
+		const infoPanel = await focusInfoPanel([
 			{ type: 'keyDown', keyCode: 'Tab' },
 			{ type: 'keyUp', keyCode: 'Tab' }
 		]);
 
-		if (infoPanel === false) {
+		if (!infoPanel) {
 			console.error('Info panel not found - stopping execution');
-			keepGoing = false;
-			break;
-		} else {
-			await new Promise(res => setTimeout(res, 500));
-		}
-
-		if (iterationCount >= maxIterations) {
-			keepGoing = false;
 			break;
 		}
 
-		// Check if user requested stop
-		if (shouldStop) {
-			console.log('Processing stopped by user');
-			break;
-		}
+		await new Promise(res => setTimeout(res, 500));
 	}
+}
 
-	} catch (error) {
-		console.error('Error during photo processing:', error);
-	} finally {
-		// Reset UI state when processing is complete
-		updateButtonStates(false);
-	}
-});
+async function extractPhotoMetadata() {
+	return await webview.executeJavaScript(`
+		(()=>{
+			let photoInfo = {
+				details: [],
+				location: null,
+				image: null
+			};
 
-/**
- * Toggles the visibility of collapsible details sections
- * @param {HTMLElement} headerElement - The header element that was clicked
- */
+			const panel = document.activeElement.closest(':has(dl)');
+			if (panel) {
+				const photoId = (window.location.pathname.match(/\\/photo\\/([^\\/]+)/) || [false]).pop();
+				if (photoId) {
+					const dataNode = document.querySelector('[data-p*="' + photoId + '"][data-width][data-height][data-url]');
+					if (dataNode) {
+						photoInfo.image = {
+							url: dataNode.getAttribute('data-url'),
+							width: parseInt(dataNode.getAttribute('data-width')),
+							height: parseInt(dataNode.getAttribute('data-height')),
+							photoId: photoId
+						};
+					}
+					const img = new Image();
+					img.src = dataNode.getAttribute('data-url');
+				}
+
+				panel.querySelectorAll('dl dd').forEach((detailNode) => {
+					let details = {};
+					Array.from(detailNode.children).forEach((child, childIndex) => {
+						if (child.children.length > 0) {
+							Array.from(child.children).forEach((grandchild, grandchildIndex) => {
+								let label = grandchild.getAttribute('aria-label');
+								if (label) {
+									label = label.split(':')[0].trim();
+								} else {
+									label = 'detail-' + childIndex + '-' + grandchildIndex;
+								}
+								details[label] = grandchild.innerText.trim();
+							});
+						} else {
+							let label = child.getAttribute('aria-label');
+							if (label) {
+								label = label.split(':')[0].trim();
+							} else {
+								label = 'detail-' + childIndex;
+							}
+							details[label] = child.innerText.trim();
+						}
+					});
+					photoInfo.details.push(details);
+				});
+
+				const locationNode = panel.querySelector('[data-mapurl]');
+				if (locationNode) {
+					photoInfo.location = {
+						url: locationNode.getAttribute('data-mapurl'),
+					};
+				}
+			}
+			return photoInfo;
+		})();
+	`);
+}
+
+// Utility Functions
 function toggleDetails(headerElement) {
 	const toggle = headerElement.querySelector('.details-toggle');
 	const content = headerElement.nextElementSibling;
@@ -427,15 +475,8 @@ function toggleDetails(headerElement) {
 	}
 }
 
-// Make function globally available for onclick handlers
 window.toggleDetails = toggleDetails;
 
-/**
- * Loads an image from a URL using the webview session
- * @param {string} url - The URL of the image to load
- * @returns {Promise<Uint8Array>} The image data as a Uint8Array
- * @throws {Error} If the image cannot be loaded
- */
 async function loadImageInWebview(url) {
 	try {
 		const result = await window.electronAPI.downloadImageWithSession(url);
@@ -446,10 +487,6 @@ async function loadImageInWebview(url) {
 	}
 }
 
-/**
- * Gets the HTML of the currently focused element in the webview
- * @returns {Promise<string>} The outerHTML of the focused element
- */
 async function getFocusedElementHTML() {
 	return await webview.executeJavaScript(`
 		(()=>{
@@ -458,12 +495,6 @@ async function getFocusedElementHTML() {
 	`);
 }
 
-/**
- * Sends a mouse click event to the webview at specified coordinates
- * @param {number} x - X coordinate for the click
- * @param {number} y - Y coordinate for the click
- * @param {string} button - Mouse button to click ('left', 'right', 'middle')
- */
 async function sendMouseClick(x, y, button = 'left') {
 	webview.sendInputEvent({
 		type: 'mouseDown',
@@ -481,14 +512,6 @@ async function sendMouseClick(x, y, button = 'left') {
 	});
 }
 
-/**
- * Focuses on the information panel in Google Photos by sending input events
- * @param {Object|Array} inputEvents - Input event(s) to send to focus the panel
- * @param {boolean} update - Whether to update the stored panel coordinates
- * @param {number} maxAttempts - Maximum number of attempts to find the panel
- * @param {number} delayMs - Delay between attempts in milliseconds
- * @returns {Promise<boolean|Object>} The info panel object if found, false otherwise
- */
 async function focusInfoPanel(inputEvents, update = false, maxAttempts = 200, delayMs = 10) {
 	let foundElement = false;
 	let attempts = 0;
@@ -528,4 +551,23 @@ async function focusInfoPanel(inputEvents, update = false, maxAttempts = 200, de
 	}
 
 	return foundElement;
+}
+
+function detectAndFormatJSON(text) {
+	if (!text || typeof text !== 'string') return { isJson: false };
+
+	try {
+		const jsonMatch = text.match(/\{[\s\S]*\}/);
+		if (jsonMatch) {
+			const jsonString = jsonMatch[0];
+			const parsed = JSON.parse(jsonString);
+			return {
+				isJson: true,
+				json: parsed
+			};
+		}
+		return { isJson: false };
+	} catch (error) {
+		return { isJson: false };
+	}
 }
