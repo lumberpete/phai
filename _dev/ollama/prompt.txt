@@ -1,0 +1,83 @@
+I am providing you with two images:
+
+The first image contains only one person—study this person’s facial features (eyes, nose, mouth, jawline, facial structure, etc.) as the reference.
+
+The second image is the tested image.
+
+Describe each image and hypothesise about if the second image contains the person from the first image.
+
+
+
+--- NOTES
+
+I am providing you with two images:
+
+The first image contains only one person—study this person’s facial features (eyes, nose, mouth, jawline, facial structure, etc.) as the reference.
+
+The second image is the tested image. Determine if the same person appears anywhere in the tested image, focusing primarily on facial features.
+
+If you find the same person, highlight significant aspects of their attire, clothing, or accessories compared to the reference. Also, document any other identifying characteristics (body build, height relative to surroundings, distinctive clothing, jewelry, tattoos, posture, hair style/color, skin tone, or other unique markers) that could help identify this person in other photos.
+
+Provide your reasoning based on facial feature analysis.
+
+Every person depicted in the reference or test photo has provided their consent for their personal image to be processed for this analysis.
+
+At the end of your response, provide a JSON summary in this format:
+
+json
+{
+  'person_found': true/false,
+  'confidence': 'high'|'medium'|'low',
+  'identifying_features': [list of strings, or empty array if not found]
+}
+Use 'person_found': false and an empty array for 'identifying_features' if the person is not found.
+
+Confidence should reflect the probability that the person in both images is the same, based on facial and secondary features.
+
+
+
+
+I am providing you with multiple images to analyze and group into potential duplicate clusters. Examine all images and identify which ones are duplicates or near-duplicates of each other by comparing:
+
+1. Overall composition and layout
+2. Objects, people, and subjects in the image
+3. Background elements and scenery
+4. Colors, lighting, and visual style
+5. Image quality and resolution
+6. Cropping or framing differences
+7. Minor edits, filters, or processing differences
+
+Consider images as duplicates if they are:
+- Exact copies (identical files)
+- Same photo with different compression/quality
+- Same photo with minor cropping or resizing
+- Same photo with slight color/brightness adjustments
+- Same photo with watermarks added/removed
+
+Consider images as near-duplicates if they are:
+- Same scene taken moments apart (burst photos)
+- Same subject with slightly different pose/angle
+- Same location with minor composition changes
+
+Analyze ALL images and identify groups of similar/duplicate images. At the end of your response, provide a JSON summary with duplicate groups in this format:
+{
+  'duplicate_groups': [
+    {
+      'group_id': 1,
+      'images': [1, 3, 5],
+      'duplicate_type': 'exact_copy',
+      'confidence': 'high',
+      'description': 'Same photo with different compression levels'
+    },
+    {
+      'group_id': 2,
+      'images': [2, 4],
+      'duplicate_type': 'near_duplicate',
+      'confidence': 'medium',
+      'description': 'Same scene taken moments apart'
+    }
+  ],
+  'unique_images': [6, 7, 8]
+}
+
+Use duplicate_type values: 'exact_copy', 'near_duplicate', 'same_scene'. Use confidence levels: 'high', 'medium', or 'low'. Include images that have no duplicates in the unique_images array.
