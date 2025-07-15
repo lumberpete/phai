@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `reference_photo.jpg` for reference images
   - Allows persistent, reusable configuration for specialized workflows
   - Falls back to UI input if files are not present
-**New Model Support**: Added support for new Ollama models, all now available for selection in the UI:
+- **New Model Support**: Added support for new Ollama models, all now available for selection in the UI:
   - `gemma3:12b`: Large language and vision model from Google
   - `gemma3:4b`: Smaller, efficient version of Google's vision-language model
   - `minicpm-v`: Lightweight multimodal vision-language model
