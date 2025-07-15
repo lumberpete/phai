@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	downloadImageWithSession: (url) => ipcRenderer.invoke('download-image-with-session', url),
 	selectReferenceImage: () => ipcRenderer.invoke('select-reference-image'),
 	readPromptFile: () => ipcRenderer.invoke('read-prompt-file'),
-	readReferencePhotoFile: () => ipcRenderer.invoke('read-reference-photo-file')
+	readReferencePhotoFile: () => ipcRenderer.invoke('read-reference-photo-file'),
+	saveRequestJson: (jsonString) => ipcRenderer.invoke('save-request-json', jsonString)
 });

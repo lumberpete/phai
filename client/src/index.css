@@ -211,7 +211,7 @@ webview {
 
 /* ========== Info Panel ========== */
 .info-panel {
-	width: 350px;
+	width: 450px;
 	background-color: #f8f9fa;
 	border-left: 1px solid #ddd;
 	display: flex;

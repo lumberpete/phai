@@ -145,15 +145,24 @@ async function getImageDescription(base64Image) {
 			images.unshift(referenceImageData.base64);
 		}
 
+		const requestBody = {
+			model: selectedModel,
+			prompt: customPrompt,
+			images: images,
+			stream: false
+		};
+
+		// Save request body to tmp/request.json (pretty-printed)
+		try {
+			await window.electronAPI.saveRequestJson(JSON.stringify(requestBody, null, 2));
+		} catch (err) {
+			console.warn('Could not save request.json:', err);
+		}
+
 		const response = await fetch(apiUrl, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				model: selectedModel,
-				prompt: customPrompt,
-				images: images,
-				stream: false
-			})
+			headers: { 'Content-Type': 'application/json; charset=utf-8' },
+			body: JSON.stringify(requestBody)
 		});
 
 		if (!response.ok) {
@@ -354,7 +363,7 @@ async function processPhotos() {
 		if (photoInfo.image && photoInfo.image.url) {
 			try {
 				const imageBuffer = await loadImageInWebview(photoInfo.image.url);
-				photoInfo.image.data64 = btoa(String.fromCharCode.apply(null, imageBuffer));
+				photoInfo.image.data64 = uint8ToBase64(imageBuffer);
 				photoInfo.image.description = await getImageDescription(photoInfo.image.data64);
 			} catch (error) {
 				console.error('Failed to fetch image for base64 conversion:', error);
@@ -413,14 +422,21 @@ async function extractPhotoMetadata() {
 					const dataNode = document.querySelector('[data-p*="' + photoId + '"][data-width][data-height][data-url]');
 					if (dataNode) {
 						photoInfo.image = {
-							url: dataNode.getAttribute('data-url'),
+							url: null,
 							width: parseInt(dataNode.getAttribute('data-width')),
 							height: parseInt(dataNode.getAttribute('data-height')),
 							photoId: photoId
 						};
+
+						photoInfo.image.url =
+							dataNode.getAttribute('data-url') +
+							'=w' + photoInfo.image.width +
+							'-h' + photoInfo.image.height +
+							'-no?authuser=0';
+
+						const img = new Image();
+						img.src = photoInfo.image.url;
 					}
-					const img = new Image();
-					img.src = dataNode.getAttribute('data-url');
 				}
 
 				panel.querySelectorAll('dl dd').forEach((detailNode) => {
@@ -570,4 +586,13 @@ function detectAndFormatJSON(text) {
 	} catch (error) {
 		return { isJson: false };
 	}
+}
+
+function uint8ToBase64(uint8Array) {
+	let binary = '';
+	const len = uint8Array.byteLength;
+	for (let i = 0; i < len; i++) {
+		binary += String.fromCharCode(uint8Array[i]);
+	}
+	return btoa(binary);
 }

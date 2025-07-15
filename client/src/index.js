@@ -80,6 +80,21 @@ ipcMain.handle('select-reference-image', async () => {
 	}
 });
 
+ipcMain.handle('save-request-json', async (event, jsonString) => {
+	try {
+		const tmpDir = path.join(__dirname, 'tmp');
+		if (!fs.existsSync(tmpDir)) {
+			fs.mkdirSync(tmpDir);
+		}
+		const filePath = path.join(tmpDir, 'request.json');
+		fs.writeFileSync(filePath, jsonString, 'utf8');
+		return true;
+	} catch (err) {
+		console.error('Error saving request.json:', err);
+		return false;
+	}
+});
+
 // Default Input Files Handlers
 const defaultInputFiles = [
 	{
