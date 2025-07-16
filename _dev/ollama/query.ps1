@@ -7,7 +7,7 @@
 
 param(
     [int]$TestImageNumber,
-    [int]$ModelIndex = 2
+    [int]$ModelIndex = 3
 )
 
 # Configuration
@@ -22,7 +22,8 @@ $Models = @(
     'minicpm-v',
     'qwen2.5vl:7b',
     'llava:7b',
-    'llava:13b'
+    'llava:13b',
+    'llama3.2-vision:11b'
 )
 
 # Function to get all available test image files
@@ -64,7 +65,7 @@ function Get-ValidatedModel {
     return $Models[$ModelIndex]
 }
 
-# Function to convert images to base64
+# Function to resize and convert images to base64
 function ConvertTo-Base64Images {
     param([array]$ImagePaths)
 
@@ -74,9 +75,88 @@ function ConvertTo-Base64Images {
             Write-Error "Image not found: $imagePath"
             continue
         }
-        $base64Images += [Convert]::ToBase64String([IO.File]::ReadAllBytes($imagePath))
+
+        # Resize image
+        $resizedImageBytes = Resize-ImageIfNeeded -ImagePath $imagePath
+        $base64Images += [Convert]::ToBase64String($resizedImageBytes)
     }
     return $base64Images
+}
+
+# Function to resize image if it exceeds maximum dimensions
+function Resize-ImageIfNeeded {
+    param(
+        [string]$ImagePath,
+        [int]$MaxWidth = 1100,
+        [int]$MaxHeight = 1100
+    )
+
+    Add-Type -AssemblyName System.Drawing
+
+    try {
+        # Load the original image
+        $originalImage = [System.Drawing.Image]::FromFile($ImagePath)
+        $originalWidth = $originalImage.Width
+        $originalHeight = $originalImage.Height
+
+        # Check if resizing is needed
+        if ($originalWidth -le $MaxWidth -and $originalHeight -le $MaxHeight) {
+            # No resizing needed, return original bytes
+            $originalImage.Dispose()
+            return [IO.File]::ReadAllBytes($ImagePath)
+        }
+
+        # Calculate new dimensions while maintaining aspect ratio
+        $aspectRatio = $originalWidth / $originalHeight
+        $rand = Get-Random -Minimum 1 -Maximum 100
+
+        if ($aspectRatio -gt ($MaxWidth / $MaxHeight)) {
+            # Width is the limiting factor
+            $newWidth = $MaxWidth + $rand
+            $newHeight = [int]($MaxWidth / $aspectRatio)
+        } else {
+            # Height is the limiting factor
+            $newHeight = $MaxHeight + $rand
+            $newWidth = [int]($MaxHeight * $aspectRatio)
+        }
+
+        Write-Host "Resizing image from ${originalWidth}x${originalHeight} to ${newWidth}x${newHeight}"
+
+        # Create new bitmap with calculated dimensions
+        $resizedImage = New-Object System.Drawing.Bitmap($newWidth, $newHeight)
+        $graphics = [System.Drawing.Graphics]::FromImage($resizedImage)
+
+        # Set high quality settings
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+
+        # Draw the resized image
+        $graphics.DrawImage($originalImage, 0, 0, $newWidth, $newHeight)
+
+        # Save to memory stream as JPEG
+        $memoryStream = New-Object System.IO.MemoryStream
+        $jpegCodec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }
+        $encoderParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
+        $encoderParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, 85L)
+
+        $resizedImage.Save($memoryStream, $jpegCodec, $encoderParams)
+        $resizedBytes = $memoryStream.ToArray()
+
+        # Clean up
+        $graphics.Dispose()
+        $resizedImage.Dispose()
+        $originalImage.Dispose()
+        $memoryStream.Dispose()
+
+        return $resizedBytes
+    }
+    catch {
+        Write-Error "Failed to resize image ${ImagePath}: $_"
+        # Fallback to original image if resizing fails
+        if ($originalImage) { $originalImage.Dispose() }
+        return [IO.File]::ReadAllBytes($ImagePath)
+    }
 }
 
 # Function to generate HTML content
@@ -106,11 +186,11 @@ function New-HtmlContent {
     $htmlResponse = ""
     if ($Response) {
         $htmlResponseBody = ConvertFrom-Markdown -InputObject $Response
-        $htmlResponse = "<div><h2>Ollama Response</h2>" + $htmlResponseBody.Html + "</div><hr/>"
+        $htmlResponse = "<div><h2>Ollama Response</h2>" + $htmlResponseBody.Html + "</div>"
     }
 
     # Combine all sections: Model + Images + Response + Prompt
-    return "<html><body>" + $htmlModel + ($htmlImages -join "`n") + "<hr/>" + $htmlResponse + $htmlPrompt + "</body></html>"
+    return "<html><body>" + $htmlModel + "<div style='display: flex; gap: 20px; flex-direction: row;'>" + ($htmlImages -join "`n") + $htmlResponse + "</div><hr/>" + $htmlPrompt + "</body></html>"
 }
 
 # Main script execution
@@ -138,7 +218,8 @@ try {
             exit 1
         }
         $TestImagesToProcess = @($testImagePath)
-    } else {
+    }
+    else {
         # No test image specified, process all available test images
         $TestImagesToProcess = $TestImages
         Write-Host "No test image specified. Processing all available test images: $($TestImagesToProcess.Count) images found."
@@ -161,29 +242,43 @@ try {
 
         # Generate a UUID for this run
         $uuid = [guid]::NewGuid().ToString()
-        $currentPrompt = "This is request number {$uuid}.`n`n$Prompt"
+        $currentPrompt = "This is task number $uuid.`n`n$Prompt"
 
         # Generate initial HTML content (without response)
         $htmlFileName = [System.IO.Path]::ChangeExtension($testImageName, 'html')
         $tempHtmlPath = Join-Path $ScriptDir "tmp/$htmlFileName"
-        $htmlContent = New-HtmlContent -SelectedModel $SelectedModel -ImagePaths $imagesToUse -Prompt $currentPrompt
+        $htmlContent = New-HtmlContent -SelectedModel $SelectedModel -ImagePaths $imagesToUse -Prompt $currentPrompt -Response "Processing request..."
         Set-Content -Path $tempHtmlPath -Value $htmlContent
 
         Write-Host "Model used in request: $SelectedModel"
         Write-Host "Images used in request: $($usedImageNames -join ', ')"
 
         # Prepare payload for Ollama
-        $PayloadObject = @{
-            uuid = $uuid
-            options = @{
-                num_ctx = 65536
+        if ($SelectedModel -eq 'llama3.2-vision:11b') {
+            $Message = @{
+                role = "user"
+                content = $currentPrompt
+                images = $Base64Images
             }
-            model  = $SelectedModel
-            prompt = $currentPrompt
-            images = $Base64Images
-            stream = $false
+            $PayloadObject = @{
+                model = $SelectedModel
+                messages = @($Message)
+            }
         }
-        $Payload = $PayloadObject | ConvertTo-Json -Compress
+        else {
+            $PayloadObject = @{
+                uuid = $uuid
+                options = @{
+                    num_ctx = 65536
+                }
+                model = $SelectedModel
+                prompt = $currentPrompt
+                images = $Base64Images
+                stream = $false
+            }
+        }
+        $Payload = $PayloadObject | ConvertTo-Json -Compress -Depth 5
+
 
         # Save request body to tmp/request.json (pretty-printed)
         $tmpRequestPath = Join-Path $ScriptDir 'tmp/request.json'
@@ -192,7 +287,7 @@ try {
         # Send request to Ollama with timing
         Write-Host 'Sending request to Ollama...'
         $startTime = Get-Date
-        $Response = Invoke-RestMethod -Uri $OllamaEndpoint -Method Post -ContentType 'application/json' -Body $Payload
+        $Response = Invoke-RestMethod -Uri $OllamaEndpoint -Method Post -ContentType 'application/json; charset=utf-8' -Body $Payload
         $endTime = Get-Date
         $elapsed = $endTime - $startTime
         Write-Host ("Response received. Time taken: {0:N2} seconds" -f $elapsed.TotalSeconds)
@@ -201,7 +296,7 @@ try {
         Write-Output $responseText
 
         # Update HTML content with response (response above prompt)
-        $htmlContentWithResponse = New-HtmlContent -SelectedModel $SelectedModel -ImagePaths $imagesToUse -Prompt $Prompt -Response $responseText
+        $htmlContentWithResponse = New-HtmlContent -SelectedModel $SelectedModel -ImagePaths $imagesToUse -Prompt $currentPrompt -Response $responseText
         Set-Content -Path $tempHtmlPath -Value $htmlContentWithResponse
 
         # If processing multiple images, add separator
