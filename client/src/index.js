@@ -51,6 +51,8 @@ ipcMain.handle('download-image-with-session', async (event, url) => {
 });
 
 ipcMain.handle('select-reference-image', async () => {
+	const sharp = require('sharp');
+
 	const result = await dialog.showOpenDialog({
 		title: 'Select Reference Image',
 		filters: [
@@ -67,15 +69,36 @@ ipcMain.handle('select-reference-image', async () => {
 
 	try {
 		const fileBuffer = fs.readFileSync(filePath);
-		const base64Data = fileBuffer.toString('base64');
+
+		// Generate random number 1-100
+		const randomNum = Math.floor(Math.random() * 100) + 1;
+		const maxWidth = 1100 + randomNum;
+
+		// Use sharp to get metadata and resize if needed
+		const image = sharp(fileBuffer);
+		const metadata = await image.metadata();
+
+		let resizedBuffer;
+		if (metadata.width > maxWidth) {
+			// Resize proportionally to fit within maxWidth
+			resizedBuffer = await image.resize({ width: maxWidth }).jpeg().toBuffer();
+		} else {
+			resizedBuffer = fileBuffer;
+		}
+
+		const base64Data = resizedBuffer.toString('base64');
 
 		return {
 			path: filePath,
 			filename: path.basename(filePath),
-			base64: base64Data
+			base64: base64Data,
+			originalWidth: metadata.width,
+			resizedWidth: metadata.width > maxWidth ? maxWidth : metadata.width,
+			maxWidth: maxWidth,
+			randomNumber: randomNum
 		};
 	} catch (error) {
-		console.error('Error reading file:', error);
+		console.error('Error reading or resizing file:', error);
 		throw error;
 	}
 });

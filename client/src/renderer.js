@@ -428,6 +428,11 @@ async function extractPhotoMetadata() {
 							photoId: photoId
 						};
 
+						const ratio = photoInfo.image.width / photoInfo.image.height;
+						const randomPixels = Math.floor(Math.random() * 101);
+						photoInfo.image.width += randomPixels;
+						photoInfo.image.height = Math.floor(photoInfo.image.width / ratio);
+
 						photoInfo.image.url =
 							dataNode.getAttribute('data-url') +
 							'=w' + photoInfo.image.width +
